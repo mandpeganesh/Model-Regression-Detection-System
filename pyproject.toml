@@ -8,8 +8,8 @@ version = "0.1.0"
 description = "Regression testing for an LLM email classifier"
 requires-python = ">=3.11"
 dependencies = [
-    "openai>=1.99",
-    "deepeval>=3.0",
+    "openai>=3.0",
+    "deepeval>=4.0",
     "pydantic>=2",
     "pyyaml>=6",
 ]
