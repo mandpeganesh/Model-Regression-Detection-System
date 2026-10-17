@@ -44,3 +44,24 @@ class FakeClient:
         if isinstance(response, Exception):
             raise response
         return response
+
+
+def make_run(run_id, dataset_version="1.0.0", created_at=None, passed_flags=(True,), categories=None, prompt_version="v1"):
+    """A RunResult built by hand; case ids are c0, c1, ...; passed cases are also category-correct."""
+    from datetime import datetime, timezone
+
+    from regress.runner import CaseResult, RunResult
+
+    categories = categories or ["billing"] * len(passed_flags)
+    cases = [
+        CaseResult(
+            case_id=f"c{i}", expected_category=cat, actual_category=cat if ok else "general",
+            actual_summary=f"summary {run_id} {i}", category_correct=ok, relevance=4 if ok else 2,
+            latency_ms=100.0, prompt_tokens=10, completion_tokens=5, passed=ok, error=None,
+        )
+        for i, (ok, cat) in enumerate(zip(passed_flags, categories))
+    ]
+    return RunResult(
+        prompt_version=prompt_version, model="gpt-4o-mini", dataset_version=dataset_version, cases=cases,
+        run_id=run_id, created_at=created_at or datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
