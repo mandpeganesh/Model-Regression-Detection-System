@@ -1,0 +1,91 @@
+name: Prompt regression eval
+
+on:
+  pull_request:
+    paths: ["prompts/**"]
+  push:
+    branches: [main]
+    paths: ["prompts/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: eval-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install .
+
+      - name: Prompts are immutable
+        if: github.event_name == 'pull_request'
+        run: |
+          changed=$(git diff --name-only --diff-filter=MR "origin/${{ github.base_ref }}...HEAD" -- prompts/)
+          if [ -n "$changed" ]; then
+            echo "::error::Prompts are immutable; add a new version file instead of editing: $changed"
+            exit 1
+          fi
+
+      # Previous runs live in runs.db. PRs restore main's cache; each run saves a new entry.
+      - uses: actions/cache/restore@v4
+        with:
+          path: runs.db
+          key: evaldb-${{ github.run_id }}
+          restore-keys: evaldb-
+
+      - name: Run eval
+        id: eval
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          WARN_THRESHOLD: ${{ vars.WARN_THRESHOLD }}
+          CRITICAL_THRESHOLD: ${{ vars.CRITICAL_THRESHOLD }}
+          DRIFT_THRESHOLD: ${{ vars.DRIFT_THRESHOLD }}
+          DRIFT_WINDOW: ${{ vars.DRIFT_WINDOW }}
+          RELEVANCE_PASS_MIN: ${{ vars.RELEVANCE_PASS_MIN }}
+          MAX_CONCURRENCY: ${{ vars.MAX_CONCURRENCY }}
+          JUDGE_MODEL: ${{ vars.JUDGE_MODEL }}
+          REPORT_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          DEEPEVAL_TELEMETRY_OPT_OUT: "YES"
+        run: |
+          set +e
+          python -m regress run
+          echo "code=$?" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-report
+          path: reports/
+          if-no-files-found: ignore
+
+      # Exit 2 means nothing was stored, so there is nothing new to save.
+      - uses: actions/cache/save@v4
+        if: steps.eval.outputs.code == '0' || steps.eval.outputs.code == '1'
+        with:
+          path: runs.db
+          key: evaldb-${{ github.run_id }}
+
+      - name: Comment on PR
+        if: always() && github.event_name == 'pull_request' && hashFiles('reports/summary.md') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr comment ${{ github.event.pull_request.number }} --body-file reports/summary.md --edit-last --create-if-none
+
+      - name: Fail on critical regression or error
+        if: always() && steps.eval.outputs.code != ''
+        run: exit ${{ steps.eval.outputs.code }}
