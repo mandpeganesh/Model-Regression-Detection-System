@@ -92,3 +92,10 @@ def test_concurrency_is_capped():
 
     run(FakeClient(respond), judge_returning(4), Settings(max_concurrency=3), dataset)
     assert peak == 3
+
+
+def test_on_case_done_called_per_case():
+    done = []
+    asyncio.run(run_eval(CFG, DS, client=answer(), judge=judge_returning(4), settings=Settings(),
+                         on_case_done=lambda: done.append(1)))
+    assert len(done) == 4

@@ -6,6 +6,7 @@ Exit codes: 0 pass/warn, 1 critical regression, 2 config/data/API error (nothing
 import argparse
 import asyncio
 import sys
+from collections.abc import Callable
 from functools import partial
 from pathlib import Path
 
@@ -20,7 +21,7 @@ from regress.dataset import load_dataset
 from regress.judge import judge_summary
 from regress.report import TREND_RUNS, render_html, render_markdown, write_text
 from regress.runner import run_eval
-from regress.store import connect, latest_run, recent_runs, save_run
+from regress.store import connect, latest_run, recent_runs, save_pr_run, save_run
 
 
 def make_client() -> AsyncOpenAI:
@@ -37,21 +38,39 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     run.add_argument("--dataset", type=Path, default=Path("data/golden.json"))
     run.add_argument("--db", type=Path, default=Path("runs.db"))
     run.add_argument("--out", type=Path, default=Path("reports"))
-    return parser.parse_args(argv)
+    run.add_argument("--record-to", type=Path, help="save the run here as a PR run instead of into --db")
+    run.add_argument("--pr-number", type=int)
+    run.add_argument("--head-sha")
+    args = parser.parse_args(argv)
+    if args.command == "run" and len({args.record_to is None, args.pr_number is None, args.head_sha is None}) != 1:
+        parser.error("--record-to, --pr-number and --head-sha must be given together")
+    return args
 
 
-def run_command(args: argparse.Namespace) -> int:
-    settings = Settings.from_env()
-    config = load_prompt(args.prompt or latest_prompt(args.prompts_dir))
-    dataset = load_dataset(args.dataset)
-    args.db.parent.mkdir(parents=True, exist_ok=True)
-    conn = connect(args.db)
+def execute_run(prompt_path: Path, dataset_path: Path, db: Path, out: Path, settings: Settings, *,
+                record_to: Path | None = None, pr_number: int | None = None, head_sha: str | None = None,
+                on_case_done: Callable[[], None] | None = None) -> EvalOutcome:
+    config = load_prompt(prompt_path)
+    dataset = load_dataset(dataset_path)
+    db.parent.mkdir(parents=True, exist_ok=True)
+    conn = connect(db)
     try:
         baseline = latest_run(conn, dataset.version)
         judge = partial(judge_summary, model=settings.judge_model)
-        run = asyncio.run(run_eval(config, dataset, client=make_client(), judge=judge, settings=settings))
-        save_run(conn, run)
-        history = recent_runs(conn, dataset.version, max(TREND_RUNS, settings.drift_window))
+        run = asyncio.run(run_eval(config, dataset, client=make_client(), judge=judge, settings=settings,
+                                   on_case_done=on_case_done))
+        window = max(TREND_RUNS, settings.drift_window)
+        if record_to:  # PR runs go to their own db; the baseline db stays untouched
+            record_to.parent.mkdir(parents=True, exist_ok=True)
+            pr_conn = connect(record_to)
+            try:
+                save_pr_run(pr_conn, run, pr_number, head_sha)
+            finally:
+                pr_conn.close()
+            history = recent_runs(conn, dataset.version, window) + [run]
+        else:
+            save_run(conn, run)
+            history = recent_runs(conn, dataset.version, window)
     finally:
         conn.close()
 
@@ -62,18 +81,23 @@ def run_command(args: argparse.Namespace) -> int:
         drift=detect_drift([r.pass_rate for r in history], settings.drift_window, settings.drift_threshold),
         history=history,
     )
-    report_path = write_text(args.out / f"{run.run_id}.html", render_html(outcome, dataset))
-    summary = render_markdown(outcome, settings.report_url)
-    write_text(args.out / "summary.md", summary)
+    write_text(out / f"{run.run_id}.html", render_html(outcome, dataset))
+    write_text(out / "summary.md", render_markdown(outcome, settings.report_url))
 
     if settings.slack_webhook_url:
         try:
             slack.post(settings.slack_webhook_url, slack.build_message(outcome, settings.report_url))
         except Exception as exc:  # an alerting outage must not change the eval verdict
             print(f"warning: Slack post failed: {exc}", file=sys.stderr)
+    return outcome
 
-    print(summary)
-    print(f"Report: {report_path}")
+
+def run_command(args: argparse.Namespace) -> int:
+    settings = Settings.from_env()
+    outcome = execute_run(args.prompt or latest_prompt(args.prompts_dir), args.dataset, args.db, args.out, settings,
+                          record_to=args.record_to, pr_number=args.pr_number, head_sha=args.head_sha)
+    print((args.out / "summary.md").read_text(encoding="utf-8"))
+    print(f"Report: {args.out / (outcome.run.run_id + '.html')}")
     return 1 if outcome.comparison.status is Status.CRITICAL else 0
 
 

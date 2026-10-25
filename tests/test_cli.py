@@ -7,7 +7,7 @@ from fakes import FakeClient, parsed
 from regress import cli, slack
 from regress.config import Settings
 from regress.dataset import load_dataset
-from regress.store import connect, latest_run
+from regress.store import connect, latest_run, list_pr_runs
 
 DS_PATH = "tests/fixtures/mini_dataset.json"
 EXPECTED = {c.input: c.expected.category for c in load_dataset(DS_PATH).cases}
@@ -113,3 +113,32 @@ def test_missing_api_key_exits_2(tmp_path, monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setattr(cli, "make_client", lambda: cli.AsyncOpenAI(max_retries=6))
     assert run(tmp_path) == 2
+
+
+def run_pr(tmp_path):
+    return cli.main(["run", "--prompt", "prompts/v1.yaml", "--dataset", DS_PATH,
+                     "--db", str(tmp_path / "runs.db"), "--out", str(tmp_path / "reports"),
+                     "--record-to", str(tmp_path / "pr.db"), "--pr-number", "7", "--head-sha", "s"])
+
+
+def test_record_to_saves_pr_run_and_leaves_baseline_db(tmp_path, monkeypatch):
+    use_client(monkeypatch)
+    assert run(tmp_path) == 0
+    use_client(monkeypatch, wrong=1)
+    assert run_pr(tmp_path) == 0
+    assert len(connect(tmp_path / "runs.db").execute("SELECT 1 FROM runs").fetchall()) == 1
+    [(pr_run, number, sha)] = list_pr_runs(connect(tmp_path / "pr.db"))
+    assert (number, sha, pr_run.pass_rate) == (7, "s", 0.75)
+
+
+def test_record_to_critical_exits_1(tmp_path, monkeypatch):
+    use_client(monkeypatch)
+    assert run(tmp_path) == 0
+    use_client(monkeypatch, wrong=2)
+    assert run_pr(tmp_path) == 1
+
+
+def test_pr_args_must_come_together(tmp_path):
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["run", "--pr-number", "7"])
+    assert exc.value.code == 2
