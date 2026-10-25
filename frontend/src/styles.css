@@ -1,0 +1,34 @@
+* { box-sizing: border-box; }
+body { margin: 0; font: 14px/1.4 system-ui, sans-serif; color: #1f2937; background: #fff; }
+.app { min-height: 100vh; display: flex; flex-direction: column; }
+.bar { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: #111827; color: #f9fafb; font-weight: 600; }
+.bar .sp { flex: 1; }
+.bar .ver { font-weight: 400; font-size: 12px; }
+.badge { font-size: 11px; font-weight: 500; background: #374151; padding: 2px 8px; border-radius: 10px; }
+.btn { background: #2563eb; color: #fff; border: 0; border-radius: 4px; padding: 6px 12px; font-weight: 600; cursor: pointer; }
+.body { display: flex; flex: 1; }
+.side { width: 160px; background: #f9fafb; border-right: 1px solid #e5e7eb; padding: 12px 8px; display: flex; flex-direction: column; gap: 4px; }
+.side a { padding: 6px 10px; border-radius: 4px; color: #374151; text-decoration: none; }
+.side a.on { background: #e0e7ff; color: #1e3a8a; font-weight: 600; }
+.main { flex: 1; padding: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.main h3 { margin: 8px 0 0; font-size: 14px; }
+.muted { color: #6b7280; }
+.error { color: #991b1b; }
+.tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.tile { border: 1px solid #e5e7eb; border-radius: 6px; padding: 10px 12px; }
+.tile b { display: block; font-size: 22px; }
+.tile span { color: #6b7280; font-size: 12px; }
+.chart { width: 100%; height: auto; border: 1px solid #e5e7eb; border-radius: 6px; }
+table { width: 100%; border-collapse: collapse; }
+td, th { border-bottom: 1px solid #f3f4f6; padding: 6px 8px; text-align: left; }
+th { color: #6b7280; font-weight: 600; }
+tr.link { cursor: pointer; }
+tr.link:hover { background: #f9fafb; }
+.tag { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; }
+.tag.pass { background: #dcfce7; color: #166534; }
+.tag.warn { background: #fef3c7; color: #92400e; }
+.tag.critical { background: #fee2e2; color: #991b1b; }
+@media (max-width: 700px) {
+  .tiles { grid-template-columns: repeat(2, 1fr); }
+  .side { width: 110px; }
+}
