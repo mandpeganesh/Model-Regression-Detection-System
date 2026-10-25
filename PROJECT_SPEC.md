@@ -57,9 +57,9 @@ Most AI teams ship prompt changes blind, with no systematic check that a "small 
 
 ## Status tracking
 
-- [ ] Phase 1
-- [ ] Phase 2
-- [ ] Phase 3
-- [ ] Phase 4
-- [ ] Phase 5
+- [x] Phase 1
+- [x] Phase 2
+- [x] Phase 3
+- [x] Phase 4
+- [x] Phase 5
 - [ ] Phase 6

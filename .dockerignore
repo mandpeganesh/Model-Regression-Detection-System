@@ -1,0 +1,10 @@
+.git
+.venv
+.env
+.superpowers
+runs.db
+reports
+state
+tests
+docs
+**/__pycache__

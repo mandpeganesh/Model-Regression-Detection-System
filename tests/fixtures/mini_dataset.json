@@ -1,0 +1,45 @@
+{
+  "version": "test-1",
+  "cases": [
+    {
+      "id": "t-billing-1",
+      "input": "FIXTURE: refund request",
+      "expected": {
+        "category": "billing",
+        "summary": "FIXTURE billing summary."
+      },
+      "expected_difficulty": "easy",
+      "notes": "Synthetic test fixture, not golden data."
+    },
+    {
+      "id": "t-technical-1",
+      "input": "FIXTURE: app crash",
+      "expected": {
+        "category": "technical",
+        "summary": "FIXTURE technical summary."
+      },
+      "expected_difficulty": "easy",
+      "notes": "Synthetic test fixture, not golden data."
+    },
+    {
+      "id": "t-account-1",
+      "input": "FIXTURE: password reset",
+      "expected": {
+        "category": "account",
+        "summary": "FIXTURE account summary."
+      },
+      "expected_difficulty": "medium",
+      "notes": "Synthetic test fixture, not golden data."
+    },
+    {
+      "id": "t-general-1",
+      "input": "FIXTURE: Ich kann mich nicht einloggen — ¿ayuda? 日本語 <script>alert(1)</script>",
+      "expected": {
+        "category": "general",
+        "summary": "FIXTURE general summary."
+      },
+      "expected_difficulty": "hard",
+      "notes": "Synthetic fixture: non-ASCII and HTML in input."
+    }
+  ]
+}
