@@ -14,23 +14,30 @@ A customer-support email classifier: email text in → JSON `{category, summary}
 
 ## Stack
 
-Python 3.11+ · OpenAI API (`gpt-4o`, `gpt-4o-mini`) · DeepEval · SQLite + JSON · Slack incoming webhooks · GitHub Actions · Streamlit or static HTML report · Docker.
+Python 3.11+ · OpenAI API (`gpt-4o`, `gpt-4o-mini`) · DeepEval · PyYAML · pytest · SQLite + JSON · Slack incoming webhooks · GitHub Actions · static HTML report · Docker.
 
 Don't add dependencies beyond this list without asking.
 
-## Layout (planned)
+## Layout
 
 ```
-prompts/        # versioned prompt YAML: version id, timestamp, system prompt, few-shot examples
-data/           # golden dataset JSON (versioned)
-src/            # feature, runner, scoring, comparison, drift, report, alerts
-reports/        # generated HTML reports (gitignored)
-tests/
-.github/workflows/
+prompts/vN.yaml          # versioned prompts (immutable; newest created_at is evaluated)
+data/golden.json         # golden dataset, hand-written (versioned via its "version" field)
+src/regress/
+  config.py              # PromptConfig contract, ClassificationResult, Settings.from_env
+  feature.py             # classify_email (the feature under test)
+  dataset.py             # golden dataset schema + loader
+  judge.py               # DeepEval GEval summary relevance, 1-5
+  runner.py              # async eval run, per-case scoring
+  store.py               # SQLite run history (runs.db)
+  compare.py             # previous-run diff, thresholds, slow drift (pure logic)
+  report.py              # HTML report + PR markdown summary
+  slack.py               # Slack webhook
+  cli.py                 # `python -m regress run`, exit codes 0/1/2
+tests/                   # fakes.py holds the fake OpenAI client; fixtures/ is synthetic, not golden
+.github/workflows/eval.yml
 Dockerfile
 ```
-
-Update this section when the real layout settles.
 
 ## Rules that matter
 
@@ -64,10 +71,10 @@ Update this section when the real layout settles.
 ## Commands
 
 <!-- Fill in once tooling is chosen -->
-- Install: `TBD`
-- Run eval: `TBD`
-- Tests: `TBD`
-- Docker: `TBD`
+- Install: `python -m venv .venv && .venv/Scripts/activate && pip install -e ".[dev]"`
+- Run eval: `python -m regress run` (exit 0 pass/warn, 1 critical, 2 error)
+- Tests: `pytest`
+- Docker: `docker build -t regress . && docker run --rm --env-file .env -v "$PWD/state:/state" regress`
 
 ## Environment
 
