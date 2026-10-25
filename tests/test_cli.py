@@ -125,7 +125,7 @@ def test_record_to_saves_pr_run_and_leaves_baseline_db(tmp_path, monkeypatch):
     use_client(monkeypatch)
     assert run(tmp_path) == 0
     use_client(monkeypatch, wrong=1)
-    assert run_pr(tmp_path) == 0
+    assert run_pr(tmp_path) == 1  # 1 of 4 wrong is a 25-point drop: critical
     assert len(connect(tmp_path / "runs.db").execute("SELECT 1 FROM runs").fetchall()) == 1
     [(pr_run, number, sha)] = list_pr_runs(connect(tmp_path / "pr.db"))
     assert (number, sha, pr_run.pass_rate) == (7, "s", 0.75)
