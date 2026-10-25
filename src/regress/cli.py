@@ -5,6 +5,7 @@ Exit codes: 0 pass/warn, 1 critical regression, 2 config/data/API error (nothing
 
 import argparse
 import asyncio
+import json
 import sys
 from collections.abc import Callable
 from functools import partial
@@ -21,7 +22,9 @@ from regress.dataset import load_dataset
 from regress.judge import judge_summary
 from regress.report import TREND_RUNS, render_html, render_markdown, write_text
 from regress.runner import run_eval
-from regress.store import connect, latest_run, recent_runs, save_pr_run, save_run
+from regress.snapshot import build_snapshot, load_prompts
+from regress.store import (all_runs, connect, latest_run, list_pr_runs, recent_runs, save_pr_run,
+                           save_run)
 
 
 def make_client() -> AsyncOpenAI:
@@ -41,6 +44,12 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     run.add_argument("--record-to", type=Path, help="save the run here as a PR run instead of into --db")
     run.add_argument("--pr-number", type=int)
     run.add_argument("--head-sha")
+    export = sub.add_parser("export", help="write the dashboard snapshot JSON")
+    export.add_argument("--db", type=Path, default=Path("runs.db"))
+    export.add_argument("--pr-db", type=Path)
+    export.add_argument("--dataset", type=Path, default=Path("data/golden.json"))
+    export.add_argument("--prompts-dir", type=Path, default=Path("prompts"))
+    export.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
     if args.command == "run" and len({args.record_to is None, args.pr_number is None, args.head_sha is None}) != 1:
         parser.error("--record-to, --pr-number and --head-sha must be given together")
@@ -101,12 +110,32 @@ def run_command(args: argparse.Namespace) -> int:
     return 1 if outcome.comparison.status is Status.CRITICAL else 0
 
 
+def _read_db(path: Path | None, read):
+    """Run `read(conn)` on an existing db; a missing db means no runs and is not created."""
+    if path is None or not path.exists():
+        return []
+    conn = connect(path)
+    try:
+        return read(conn)
+    finally:
+        conn.close()
+
+
+def export_command(args: argparse.Namespace) -> int:
+    snapshot = build_snapshot(_read_db(args.db, all_runs), _read_db(args.pr_db, list_pr_runs),
+                              load_dataset(args.dataset), load_prompts(args.prompts_dir), Settings.from_env())
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"Snapshot: {args.out}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")  # Windows consoles default to cp1252; summaries contain emoji
     args = parse_args(argv)
     try:
-        return run_command(args)
+        return export_command(args) if args.command == "export" else run_command(args)
     except (ValueError, ValidationError, FileNotFoundError) as exc:
         print(f"error: {exc}", file=sys.stderr)
     except openai.OpenAIError as exc:  # includes APIError and missing credentials

@@ -142,3 +142,16 @@ def test_pr_args_must_come_together(tmp_path):
     with pytest.raises(SystemExit) as exc:
         cli.main(["run", "--pr-number", "7"])
     assert exc.value.code == 2
+
+
+def test_export_writes_utf8_json(tmp_path):
+    ds = json.loads(open(DS_PATH, encoding="utf-8").read())
+    ds["cases"][0]["input"] = "¿ayuda? 日本語"
+    ds_path = tmp_path / "golden.json"
+    ds_path.write_text(json.dumps(ds, ensure_ascii=False), encoding="utf-8")
+    db, out = tmp_path / "missing.db", tmp_path / "out" / "snapshot.json"
+    code = cli.main(["export", "--db", str(db), "--dataset", str(ds_path), "--prompts-dir", "prompts",
+                     "--out", str(out)])
+    text = out.read_text(encoding="utf-8")
+    assert code == 0 and "¿ayuda? 日本語" in text
+    assert json.loads(text)["runs"] == [] and not db.exists()
