@@ -61,6 +61,9 @@ export default function Overview({ snapshot, datasetVersion }: PageProps) {
                   <td>{points(r.comparison.pass_rate_delta)}</td>
                   <td>
                     <StatusTag status={r.comparison.status} /> {r.comparison.status === "critical" ? "blocked" : "passed"}
+                    {import.meta.env.VITE_REPO && (
+                      <> · <a href={`https://github.com/${import.meta.env.VITE_REPO}/pull/${r.pr_number}`} onClick={(e) => e.stopPropagation()}>GitHub</a></>
+                    )}
                   </td>
                 </tr>
               ))}
