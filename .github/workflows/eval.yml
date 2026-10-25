@@ -2,19 +2,19 @@ name: Prompt regression eval
 
 on:
   pull_request:
-    paths: ["prompts/**"]
+    paths: ["prompts/**", "data/golden.json"]
   push:
     branches: [main]
-    paths: ["prompts/**"]
+    paths: ["prompts/**", "data/golden.json"]
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
 
 concurrency:
-  group: eval-${{ github.ref }}
-  cancel-in-progress: true
+  group: eval-history
+  cancel-in-progress: false
 
 jobs:
   eval:
@@ -40,12 +40,14 @@ jobs:
             exit 1
           fi
 
-      # Previous runs live in runs.db. PRs restore main's cache; each run saves a new entry.
-      - uses: actions/cache/restore@v4
-        with:
-          path: runs.db
-          key: evaldb-${{ github.run_id }}
-          restore-keys: evaldb-
+      # History lives on the eval-history branch, attached at history/.
+      - name: Attach eval-history
+        run: |
+          if git ls-remote --exit-code --heads origin eval-history; then
+            git fetch origin eval-history && git worktree add history FETCH_HEAD
+          else
+            git worktree add --orphan -b eval-history history
+          fi
 
       - name: Run eval
         id: eval
@@ -63,7 +65,11 @@ jobs:
           DEEPEVAL_TELEMETRY_OPT_OUT: "YES"
         run: |
           set +e
-          python -m regress run
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            python -m regress run --db history/runs.db --record-to history/pr-runs.db --pr-number ${{ github.event.pull_request.number }} --head-sha ${{ github.event.pull_request.head.sha }}
+          else
+            python -m regress run --db history/runs.db
+          fi
           echo "code=$?" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v4
@@ -73,12 +79,16 @@ jobs:
           path: reports/
           if-no-files-found: ignore
 
-      # Exit 2 means nothing was stored, so there is nothing new to save.
-      - uses: actions/cache/save@v4
+      # Exit 2 means nothing was stored, so there is nothing new to commit.
+      - name: Save history
         if: steps.eval.outputs.code == '0' || steps.eval.outputs.code == '1'
-        with:
-          path: runs.db
-          key: evaldb-${{ github.run_id }}
+        working-directory: history
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "eval: ${{ github.event_name }} ${{ github.sha }}"
+          git push origin HEAD:eval-history
 
       - name: Comment on PR
         if: always() && github.event_name == 'pull_request' && hashFiles('reports/summary.md') != ''
