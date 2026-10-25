@@ -19,27 +19,39 @@ export default function RunEvalDialog({ snapshot, onClose, reload }: { snapshot:
     }
   }
 
+  // A run started earlier (then hidden) keeps going on the server: pick it back up.
+  useEffect(() => {
+    let cancelled = false;
+    api.currentRun().then((s) => {
+      if (!cancelled && s.state === "running") { setState(s); setStarted(true); }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
   useEffect(() => {
     if (!started) return;
-    const t = setInterval(async () => {
+    let cancelled = false;
+    // Next poll is scheduled only after the previous one resolves, so polls never overlap.
+    async function poll() {
       try {
         const s = await api.currentRun();
+        if (cancelled) return;
         setState(s);
         if (s.state === "done") {
-          clearInterval(t);
           await reload();
           onClose();
           if (s.run_id) navigate(`#/runs/${encodeURIComponent(s.run_id)}`);
         } else if (s.state === "error") {
-          clearInterval(t);
           setError(s.error ?? "run failed");
+        } else {
+          t = setTimeout(poll, 1000);
         }
       } catch (e) {
-        clearInterval(t);
-        setError((e as Error).message);
+        if (!cancelled) setError((e as Error).message);
       }
-    }, 1000);
-    return () => clearInterval(t);
+    }
+    let t = setTimeout(poll, 1000);
+    return () => { cancelled = true; clearTimeout(t); };
   }, [started]);
 
   const running = started && !error;

@@ -91,6 +91,7 @@ def test_save_round_trips_unicode(tmp_path):
     save_dataset(p, ds)
     assert "¿ayuda? 日本語" in p.read_text(encoding="utf-8")
     assert load_dataset(p) == ds
+    assert list(tmp_path.iterdir()) == [p]  # temp file was renamed into place
 
 
 def test_create_prompt_writes_new_newest_file(tmp_path):

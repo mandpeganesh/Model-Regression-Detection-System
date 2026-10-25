@@ -92,7 +92,7 @@ All thresholds come from env vars. In CI, set them as repository variables; unse
 
 `.github/workflows/eval.yml` runs on PRs and pushes to `main` that touch `prompts/` or `data/golden.json`, and can also be started by hand. Add the repository secrets `OPENAI_API_KEY` and `SLACK_WEBHOOK_URL`. The workflow posts or updates one PR comment with the summary, uploads the HTML report as the `eval-report` artifact, and fails the check on exit codes 1 and 2.
 
-History lives on the `eval-history` branch. `runs.db` gets only `main` runs and is the only baseline. `pr-runs.db` holds PR runs, which the dashboard shows but which are never a baseline. `site.yml` rebuilds the public demo after each eval and on frontend changes.
+History lives on the `eval-history` branch. `runs.db` gets only `main` runs and is the only baseline. `pr-runs/` holds one DB per PR run (`<pr_number>-<short sha>.db`), which the dashboard shows but which are never a baseline. `site.yml` rebuilds the public demo after each eval and on frontend changes.
 
 ## Dashboard
 

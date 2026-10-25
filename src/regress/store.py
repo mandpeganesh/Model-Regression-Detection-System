@@ -75,10 +75,17 @@ def _build(row, rows) -> RunResult:
 
 
 def _load_many(conn: sqlite3.Connection, run_rows) -> list[RunResult]:
-    """Build runs (in the given order) from their rows with a single case_results query."""
+    """Build runs (in the given order) from their rows, loading only those runs' case_results."""
+    run_rows = list(run_rows)
+    ids = [row[0] for row in run_rows]
     by_run: dict[str, list] = {}
-    for r in conn.execute(f"SELECT run_id, {', '.join(CASE_FIELDS)} FROM case_results ORDER BY run_id, rowid"):
-        by_run.setdefault(r[0], []).append(r[1:])
+    for i in range(0, len(ids), 900):  # SQLite caps bound variables
+        chunk = ids[i:i + 900]
+        for r in conn.execute(
+            f"SELECT run_id, {', '.join(CASE_FIELDS)} FROM case_results "
+            f"WHERE run_id IN ({', '.join('?' * len(chunk))}) ORDER BY run_id, rowid", chunk,
+        ):
+            by_run.setdefault(r[0], []).append(r[1:])
     return [_build(row[:5], by_run.get(row[0], [])) for row in run_rows]
 
 

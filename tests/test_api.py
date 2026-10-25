@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from fakes import FakeClient, parsed
-from regress import cli
+from regress import api, cli
 from regress.api import AppPaths, create_app
 from regress.config import Settings
 from regress.dataset import load_dataset
@@ -145,3 +145,16 @@ def test_serve_without_ui_extra_exits_2(monkeypatch):
     monkeypatch.delitem(sys.modules, "regress.api", raising=False)
     monkeypatch.setattr(builtins, "__import__", fake_import)
     assert cli.main(["serve"]) == 2
+
+
+def test_committed_version_is_frozen_with_empty_db(tmp_path, monkeypatch):
+    monkeypatch.setattr(api, "committed_version", lambda dataset: "test-1")
+    _, client, _ = make_app(tmp_path)
+    r = client.post("/api/golden/cases", json={"case": NEW_CASE, "new_version": "test-1"})
+    assert r.status_code == 422 and "test-1" in r.json()["detail"]
+
+
+def test_edit_unknown_case_404(tmp_path):
+    _, client, _ = make_app(tmp_path)
+    r = client.put("/api/golden/cases/t-nope", json={"case": {**NEW_CASE, "id": "t-nope"}, "new_version": "test-2"})
+    assert r.status_code == 404

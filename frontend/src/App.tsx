@@ -31,7 +31,8 @@ export default function App() {
       setError((e as Error).message);
     }
   }, []);
-  useEffect(() => { void reload(); }, [reload]);
+  // Also reload when the run dialog opens or closes, so a run that finished while hidden shows up.
+  useEffect(() => { void reload(); }, [reload, dialog]);
 
   const version = datasetVersion ?? snapshot?.dataset.version ?? "";
   const versions = snapshot

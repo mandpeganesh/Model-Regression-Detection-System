@@ -4,6 +4,7 @@ Every function raises ValueError on a rule break and writes nothing.
 """
 
 import json
+import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -46,7 +47,9 @@ def edit_case(
 
 def save_dataset(path: Path, ds: GoldenDataset) -> None:
     text = json.dumps(ds.model_dump(mode="json"), ensure_ascii=False, indent=2) + "\n"
-    Path(path).write_text(text, encoding="utf-8")
+    tmp = Path(f"{path}.tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)  # atomic: a crash mid-write never leaves a truncated golden file
 
 
 class _BlockDumper(yaml.SafeDumper):

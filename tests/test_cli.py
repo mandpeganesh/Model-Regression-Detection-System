@@ -1,13 +1,14 @@
 import json
+from datetime import datetime, timezone
 
 import openai
 import pytest
 
-from fakes import FakeClient, parsed
+from fakes import FakeClient, make_run, parsed
 from regress import cli, slack
 from regress.config import Settings
 from regress.dataset import load_dataset
-from regress.store import connect, latest_run, list_pr_runs
+from regress.store import connect, latest_run, list_pr_runs, save_pr_run
 
 DS_PATH = "tests/fixtures/mini_dataset.json"
 EXPECTED = {c.input: c.expected.category for c in load_dataset(DS_PATH).cases}
@@ -155,3 +156,15 @@ def test_export_writes_utf8_json(tmp_path):
     text = out.read_text(encoding="utf-8")
     assert code == 0 and "¿ayuda? 日本語" in text
     assert json.loads(text)["runs"] == [] and not db.exists()
+
+
+def test_export_merges_pr_dbs_oldest_first(tmp_path):
+    for name, day, number in (("p2", 2, 8), ("p1", 1, 7)):
+        conn = connect(tmp_path / f"{name}.db")
+        save_pr_run(conn, make_run(name, created_at=datetime(2026, 1, day, tzinfo=timezone.utc)), number, "s")
+        conn.close()
+    out = tmp_path / "snapshot.json"
+    code = cli.main(["export", "--db", str(tmp_path / "runs.db"), "--pr-db", str(tmp_path / "p2.db"),
+                     str(tmp_path / "p1.db"), "--dataset", DS_PATH, "--prompts-dir", "prompts", "--out", str(out)])
+    pr_runs = json.loads(out.read_text(encoding="utf-8"))["pr_runs"]
+    assert code == 0 and [(r["run_id"], r["pr_number"]) for r in pr_runs] == [("p1", 7), ("p2", 8)]

@@ -50,7 +50,9 @@ jobs:
           DRIFT_THRESHOLD: ${{ vars.DRIFT_THRESHOLD }}
           DRIFT_WINDOW: ${{ vars.DRIFT_WINDOW }}
           RELEVANCE_PASS_MIN: ${{ vars.RELEVANCE_PASS_MIN }}
-        run: python -m regress export --db history/runs.db --pr-db history/pr-runs.db --out frontend/public/data/snapshot.json
+        run: |
+          shopt -s nullglob
+          python -m regress export --db history/runs.db --pr-db history/pr-runs/*.db --out frontend/public/data/snapshot.json
 
       - uses: actions/setup-node@v4
         with:

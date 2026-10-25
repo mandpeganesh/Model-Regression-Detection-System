@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from regress.compare import compare, detect_drift
-from regress.config import PromptConfig, Settings, load_prompt
+from regress.config import PromptConfig, Settings, as_utc, load_prompt
 from regress.dataset import GoldenDataset
 from regress.runner import RunResult
 
@@ -13,7 +13,7 @@ from regress.runner import RunResult
 def load_prompts(prompts_dir: Path) -> list[PromptConfig]:
     """Every prompt in `prompts_dir`, newest created_at first."""
     prompts = [load_prompt(p) for p in Path(prompts_dir).glob("*.yaml")]
-    return sorted(prompts, key=lambda p: p.created_at, reverse=True)
+    return sorted(prompts, key=lambda p: as_utc(p.created_at), reverse=True)
 
 
 def _view(run: RunResult, baseline: RunResult | None, drift, settings: Settings) -> dict:
@@ -55,7 +55,11 @@ def build_snapshot(runs: list[RunResult], pr_runs: list[tuple[RunResult, int, st
         latest_main[v] = run
     pr_views = []
     for run, number, sha in pr_runs:
-        view = _view(run, latest_main.get(run.dataset_version), None, settings)
+        # Baseline is what CI compared against: the newest main run of this dataset version at PR-run time.
+        # ponytail: O(main x PR) scan, fine for hundreds of runs.
+        baseline = next((m for m in reversed(runs) if m.dataset_version == run.dataset_version
+                         and m.created_at <= run.created_at), None)
+        view = _view(run, baseline, None, settings)
         pr_views.append({**view, "pr_number": number, "head_sha": sha})
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),

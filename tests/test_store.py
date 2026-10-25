@@ -59,3 +59,14 @@ def test_used_versions_and_ids(tmp_path):
     save_run(conn, make_run("r1", "1.0.0", passed_flags=(True, True)))
     assert used_dataset_versions(conn) == {"1.0.0"}
     assert used_case_ids(conn) == {"c0", "c1"}
+
+
+def test_recent_runs_reads_only_selected_case_results(tmp_path):
+    conn = connect(tmp_path / "r.db")
+    save_run(conn, make_run("a", created_at=T0))
+    save_run(conn, make_run("b", created_at=T0 + timedelta(days=1)))
+    queries = []
+    conn.set_trace_callback(queries.append)
+    assert [r.run_id for r in recent_runs(conn, "1.0.0", 1)] == ["b"]
+    case_queries = [q for q in queries if "FROM case_results" in q]
+    assert case_queries and all("WHERE run_id IN" in q for q in case_queries)

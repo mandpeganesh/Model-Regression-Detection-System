@@ -12,17 +12,20 @@ permissions:
   contents: write
   pull-requests: write
 
+# PRs: newest commit wins. Main pushes share one group and queue, so runs.db has a single writer.
 concurrency:
-  group: eval-history
-  cancel-in-progress: false
+  group: eval-${{ github.event_name == 'pull_request' && github.ref || 'main' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   eval:
     runs-on: ubuntu-latest
     steps:
+      # No stored credentials: PR code runs in later steps and must not see the write token.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: actions/setup-python@v5
         with:
@@ -66,7 +69,9 @@ jobs:
         run: |
           set +e
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            python -m regress run --db history/runs.db --record-to history/pr-runs.db --pr-number ${{ github.event.pull_request.number }} --head-sha ${{ github.event.pull_request.head.sha }}
+            sha="${{ github.event.pull_request.head.sha }}"
+            mkdir -p history/pr-runs
+            python -m regress run --db history/runs.db --record-to "history/pr-runs/${{ github.event.pull_request.number }}-${sha::7}.db" --pr-number ${{ github.event.pull_request.number }} --head-sha "$sha"
           else
             python -m regress run --db history/runs.db
           fi
@@ -80,15 +85,23 @@ jobs:
           if-no-files-found: ignore
 
       # Exit 2 means nothing was stored, so there is nothing new to commit.
+      # Each PR run writes its own file and runs.db has one writer (main group), so a rebase never conflicts.
       - name: Save history
         if: steps.eval.outputs.code == '0' || steps.eval.outputs.code == '1'
         working-directory: history
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git commit -m "eval: ${{ github.event_name }} ${{ github.sha }}"
-          git push origin HEAD:eval-history
+          for i in 1 2 3; do
+            git push "$remote" HEAD:eval-history && exit 0
+            git pull --rebase "$remote" eval-history
+          done
+          exit 1
 
       - name: Comment on PR
         if: always() && github.event_name == 'pull_request' && hashFiles('reports/summary.md') != ''

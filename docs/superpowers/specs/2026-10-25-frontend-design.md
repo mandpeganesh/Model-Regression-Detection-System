@@ -75,7 +75,7 @@ prompts ─┘       │
 ```
 
 - **One data shape for both modes.** A new Python function `build_snapshot(...)` in `src/regress/snapshot.py` produces everything the UI shows: all runs with per-case results; for each run its `Comparison` against the previous run of the same dataset version and its `Drift` (computed with `compare.compare` and `compare.detect_drift`, in the same way `cli.run_command` does); the current golden dataset; every prompt version's full content; and the threshold settings in effect. The frontend never computes status, deltas or drift itself.
-- **Public demo:** new CLI subcommand `python -m regress export --db runs.db [--pr-db pr-runs.db] [--dataset ...] [--prompts-dir ...] --out <path>/snapshot.json` writes `build_snapshot(...)` as JSON (`ensure_ascii=False`, utf-8). The demo build fetches `./data/snapshot.json`.
+- **Public demo:** new CLI subcommand `python -m regress export --db runs.db [--pr-db pr-runs/*.db] [--dataset ...] [--prompts-dir ...] --out <path>/snapshot.json` writes `build_snapshot(...)` as JSON (`ensure_ascii=False`, utf-8). The demo build fetches `./data/snapshot.json`.
 - **Owner mode:** `GET /api/snapshot` returns the same JSON from the local `runs.db`, `data/golden.json` and `prompts/`. The frontend refetches it after any write or finished run.
 - **Mode switch (my call):** build-time flag. The Pages build sets `VITE_DEMO=1` (read snapshot file, render no owner UI). The owner build talks to `/api`.
 - Statuses in the snapshot are computed with the thresholds in effect at export time, which matches what CI reported as long as thresholds don't change.
@@ -102,15 +102,17 @@ prompts ─┘       │
 
 The Actions cache is replaced as the store of CI history, because GitHub evicts it after 7 days unused (wiping both the demo and the CI baseline) and PR-scoped cache entries are invisible to `main`.
 
-- An orphan branch **`eval-history`** holds two SQLite files with the existing `store.py` schema:
+- An orphan branch **`eval-history`** holds SQLite files with the existing `store.py` schema:
   - `runs.db`: runs from pushes to `main`. **This alone is the baseline** for every comparison, exactly as today.
-  - `pr-runs.db`: runs from PRs, plus a small extra table `pr_runs(run_id, pr_number, head_sha)`. Never used as a baseline.
+  - `pr-runs/<pr_number>-<short sha>.db`: one DB per PR run, with a small extra table `pr_runs(run_id, pr_number, head_sha)`. Never used as a baseline. One file per run means concurrent PR runs never write the same file.
 - `eval.yml` changes:
   - Check out `eval-history` (into a subdirectory) instead of restoring the cache; if the branch doesn't exist yet, start empty and create it on the first save.
   - On `main`: `regress run --db <history>/runs.db`, then commit and push `runs.db` to `eval-history`.
-  - On a PR: baseline from `<history>/runs.db`, but the run is saved to `<history>/pr-runs.db` with its PR number and head SHA, then committed and pushed. This needs a new CLI option to save somewhere other than the baseline DB (e.g. `--record-to PATH --pr-number N --head-sha SHA`); default behaviour unchanged.
+  - On a PR: baseline from `<history>/runs.db`, but the run is saved to `<history>/pr-runs/<pr_number>-<short sha>.db` with its PR number and head SHA, then committed and pushed. This needs a new CLI option to save somewhere other than the baseline DB (e.g. `--record-to PATH --pr-number N --head-sha SHA`); default behaviour unchanged.
   - Exit code 2 stores nothing, so nothing is committed.
-  - `permissions: contents: write` (for the branch push). All eval jobs share one concurrency group (`eval-history`, `cancel-in-progress: false`) so pushes to the binary DB files never race. Accepted limit: GitHub keeps only one queued run per group, so a burst of pushes can skip an intermediate PR run; fine for a single-owner repo.
+  - `permissions: contents: write` (for the branch push). Checkout uses `persist-credentials: false`; only the final push step gets the token, so PR code run by earlier steps can't push.
+  - Concurrency: one group per PR (`cancel-in-progress: true`, newest commit wins) and one shared group for `main` (`cancel-in-progress: false`), so `runs.db` has a single writer. Accepted limit: GitHub keeps only one queued run per group, so a burst of `main` pushes can skip an intermediate run.
+  - The push retries up to 3 times with `git pull --rebase` in between; runs write different files, so the rebase never conflicts.
   - Remove the `actions/cache` steps.
 - **Triggers now include `data/golden.json`** (decided), on both `pull_request` and `push` to `main`, so a dataset bump gets its baseline straight away. Update the CI rule in `CLAUDE.md` ("triggers on PRs that touch `prompts/` or `data/golden.json`") and the README.
 - Fork PRs still can't push (no secrets, no write token); out of scope as before.
@@ -120,14 +122,14 @@ The Actions cache is replaced as the store of CI history, because GitHub evicts 
 New workflow `.github/workflows/site.yml`:
 
 - Triggers: `workflow_run` of "Prompt regression eval" completed (any branch, since PR runs are shown too); `push` to `main` touching `frontend/**` or `src/regress/snapshot.py`; `workflow_dispatch`. (`workflow_run` is needed because pushes made with `GITHUB_TOKEN`, like the history commit, don't trigger workflows.)
-- Steps: check out `main`'s code and the `eval-history` branch; `pip install .`; `python -m regress export --db <history>/runs.db --pr-db <history>/pr-runs.db --out frontend/public/data/snapshot.json` (with golden and prompts read from `main`); `npm ci && npm run build` with `VITE_DEMO=1`; deploy with `actions/upload-pages-artifact` + `actions/deploy-pages`. Permissions `pages: write`, `id-token: write`. Threshold repo variables are passed as env, as in `eval.yml`.
+- Steps: check out `main`'s code and the `eval-history` branch; `pip install .`; `python -m regress export --db <history>/runs.db --pr-db <history>/pr-runs/*.db --out frontend/public/data/snapshot.json` (with golden and prompts read from `main`); `npm ci && npm run build` with `VITE_DEMO=1`; deploy with `actions/upload-pages-artifact` + `actions/deploy-pages`. Permissions `pages: write`, `id-token: write`. Threshold repo variables are passed as env, as in `eval.yml`.
 - If `eval-history` doesn't exist yet, the site deploys with an empty snapshot and shows "No runs yet".
 - **Owner action needed once:** repo Settings → Pages → Source: "GitHub Actions".
 - The snapshot includes golden emails and prompts, which are already public in the repo, so the demo exposes nothing new.
 
 ### PR runs in the UI
 
-- Snapshot gets a `pr_runs` list: each PR run with its PR number, head SHA, and its `Comparison` against the `main` baseline it was evaluated against (the latest `main` run of the same dataset version at export time; **my call**, close enough since baselines only move on merge).
+- Snapshot gets a `pr_runs` list: each PR run with its PR number, head SHA, and its `Comparison` against the `main` baseline it was evaluated against (the latest `main` run of the same dataset version whose `created_at` is at or before the PR run's, i.e. what CI compared it to; later `main` runs don't change a PR run's verdict).
 - Overview: a **"Pull requests"** panel listing the latest run per PR with status: `CRITICAL → blocked`, `WARN`/`PASS → passed`, and a link to the PR on GitHub. This is where a visitor sees a regression get caught.
 - Clicking a PR run opens the normal run detail, labelled "PR #N · not merged into history".
 - PR runs never appear in the main trend line or drift calculation.
@@ -139,7 +141,7 @@ New workflow `.github/workflows/site.yml`:
 
 ### Dataset version bump rule (my call, protects baselines)
 
-- A dataset version is **frozen once any run in the local `runs.db` used it**. Saving an edit to a frozen version requires a new version string.
+- A dataset version is **frozen once any run in the local `runs.db` used it, or once it is the version committed at git `HEAD`** (CI has run it even if the local `runs.db` is empty). Saving an edit to a frozen version requires a new version string.
 - While the current version has no runs yet (a pending version), further edits may keep it, so editing five cases before committing produces one new version, not five.
 - A new version string must not already appear in `runs.db` (no reuse of an old version with new content).
 - The API refuses golden and prompt writes while a run is in progress.

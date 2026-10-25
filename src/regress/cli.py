@@ -46,7 +46,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     run.add_argument("--head-sha")
     export = sub.add_parser("export", help="write the dashboard snapshot JSON")
     export.add_argument("--db", type=Path, default=Path("runs.db"))
-    export.add_argument("--pr-db", type=Path)
+    export.add_argument("--pr-db", type=Path, nargs="*", default=[], help="PR run dbs (one per PR run)")
     export.add_argument("--dataset", type=Path, default=Path("data/golden.json"))
     export.add_argument("--prompts-dir", type=Path, default=Path("prompts"))
     export.add_argument("--out", type=Path, required=True)
@@ -117,7 +117,8 @@ def run_command(args: argparse.Namespace) -> int:
 
 
 def export_command(args: argparse.Namespace) -> int:
-    snapshot = build_snapshot(read_db(args.db, all_runs), read_db(args.pr_db, list_pr_runs),
+    pr_runs = sorted((r for db in args.pr_db for r in read_db(db, list_pr_runs)), key=lambda r: r[0].created_at)
+    snapshot = build_snapshot(read_db(args.db, all_runs), pr_runs,
                               load_dataset(args.dataset), load_prompts(args.prompts_dir), Settings.from_env())
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")

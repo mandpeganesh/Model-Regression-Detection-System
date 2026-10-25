@@ -3,7 +3,10 @@
 Binds to localhost only (see `regress serve`); write endpoints also reject foreign Origins.
 """
 
+import json
+import subprocess
 import threading
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -11,7 +14,6 @@ from urllib.parse import urlparse
 
 import openai
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -54,6 +56,27 @@ def _local_origin(request: Request) -> None:
         raise HTTPException(403, "write endpoints only accept localhost origins")
 
 
+def committed_version(dataset: Path) -> str | None:
+    """The dataset version at git HEAD: CI has run it even if the local runs.db is empty. None without git."""
+    try:
+        out = subprocess.run(["git", "show", f"HEAD:./{dataset.name}"], cwd=dataset.parent, capture_output=True,
+                             encoding="utf-8", check=True).stdout
+        return json.loads(out)["version"]
+    except (OSError, subprocess.CalledProcessError, ValueError, KeyError, TypeError):
+        return None
+
+
+@contextmanager
+def _rule_errors():
+    """Rule breaks from the edit guards become 422/404; anything else stays a 500."""
+    try:
+        yield
+    except KeyError as exc:
+        raise HTTPException(404, f"not found: {exc}") from None
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from None
+
+
 def create_app(paths: AppPaths) -> FastAPI:
     app = FastAPI()
     app.state.run_thread = None
@@ -63,14 +86,6 @@ def create_app(paths: AppPaths) -> FastAPI:
     def check_idle() -> None:
         if state["state"] == "running":
             raise HTTPException(409, "a run is in progress")
-
-    @app.exception_handler(ValueError)
-    def _value_error(request: Request, exc: ValueError):
-        return JSONResponse({"detail": str(exc)}, status_code=422)
-
-    @app.exception_handler(KeyError)
-    def _key_error(request: Request, exc: KeyError):
-        return JSONResponse({"detail": f"not found: {exc}"}, status_code=404)
 
     @app.get("/api/snapshot")
     def snapshot():
@@ -112,10 +127,12 @@ def create_app(paths: AppPaths) -> FastAPI:
         return {"run_id": None}
 
     def write_dataset(make) -> dict:
-        with lock:  # also stops a run from starting mid-write
+        with lock, _rule_errors():  # the lock also stops a run from starting mid-write
             check_idle()
-            ds = make(load_dataset(paths.dataset), set(read_db(paths.db, used_dataset_versions)),
-                      set(read_db(paths.db, used_case_ids)))
+            versions = set(read_db(paths.db, used_dataset_versions))
+            if committed := committed_version(paths.dataset):
+                versions.add(committed)
+            ds = make(load_dataset(paths.dataset), versions, set(read_db(paths.db, used_case_ids)))
             save_dataset(paths.dataset, ds)
             return {"version": ds.version}
 
@@ -129,7 +146,7 @@ def create_app(paths: AppPaths) -> FastAPI:
 
     @app.post("/api/prompts", status_code=201, dependencies=[Depends(_local_origin)])
     def post_prompt(body: PromptBody):
-        with lock:
+        with lock, _rule_errors():
             check_idle()
             create_prompt(paths.prompts_dir, version=body.version, model=body.model,
                           system_prompt=body.system_prompt, few_shot_examples=body.few_shot_examples,

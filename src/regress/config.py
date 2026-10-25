@@ -3,7 +3,7 @@
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
@@ -38,9 +38,14 @@ def load_prompt(path: Path) -> PromptConfig:
     return PromptConfig.model_validate(yaml.safe_load(Path(path).read_text(encoding="utf-8")))
 
 
+def as_utc(dt: datetime) -> datetime:
+    """Naive created_at counts as UTC, so naive and aware prompts sort together."""
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
 def latest_prompt(prompts_dir: Path) -> Path:
     """The prompt file with the newest created_at."""
-    dated = sorted((load_prompt(p).created_at, p) for p in Path(prompts_dir).glob("*.yaml"))
+    dated = sorted((as_utc(load_prompt(p).created_at), p) for p in Path(prompts_dir).glob("*.yaml"))
     if not dated:
         raise ValueError(f"no prompt files in {prompts_dir}")
     if len(dated) > 1 and dated[-1][0] == dated[-2][0]:

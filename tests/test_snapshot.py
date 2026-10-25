@@ -69,3 +69,18 @@ def test_snapshot_has_no_secrets():
     assert "hooks.slack.com" not in json.dumps(s)
     assert set(s["settings"]) == {"warn_threshold", "critical_threshold", "drift_threshold", "drift_window",
                                   "relevance_pass_min"}
+
+
+def test_pr_run_baseline_is_main_run_at_pr_time():
+    def rate(pct):
+        return (True,) * pct + (False,) * (100 - pct)
+
+    main = [make_run("a", passed_flags=rate(95), created_at=at(0)),
+            make_run("late", passed_flags=rate(72), created_at=at(2))]
+    pr = snap(main, [(make_run("p", passed_flags=rate(70), created_at=at(1)), 7, "s")])["pr_runs"][0]
+    assert pr["comparison"]["baseline_run_id"] == "a" and pr["comparison"]["status"] == "critical"
+
+
+def test_pr_run_before_any_main_run_has_no_baseline():
+    s = snap([make_run("a", created_at=at(1))], [(make_run("p", created_at=at(0)), 7, "s")])
+    assert s["pr_runs"][0]["comparison"]["baseline_run_id"] is None
