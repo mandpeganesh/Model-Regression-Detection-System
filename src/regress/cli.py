@@ -50,6 +50,12 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     export.add_argument("--dataset", type=Path, default=Path("data/golden.json"))
     export.add_argument("--prompts-dir", type=Path, default=Path("prompts"))
     export.add_argument("--out", type=Path, required=True)
+    serve = sub.add_parser("serve", help="local dashboard + owner API on 127.0.0.1")
+    serve.add_argument("--port", type=int, default=8000)
+    serve.add_argument("--dataset", type=Path, default=Path("data/golden.json"))
+    serve.add_argument("--prompts-dir", type=Path, default=Path("prompts"))
+    serve.add_argument("--db", type=Path, default=Path("runs.db"))
+    serve.add_argument("--out", type=Path, default=Path("reports"))
     args = parser.parse_args(argv)
     if args.command == "run" and len({args.record_to is None, args.pr_number is None, args.head_sha is None}) != 1:
         parser.error("--record-to, --pr-number and --head-sha must be given together")
@@ -130,12 +136,25 @@ def export_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def serve_command(args: argparse.Namespace) -> int:
+    try:
+        import uvicorn
+
+        from regress.api import AppPaths, create_app
+    except ImportError:
+        print("error: install with pip install -e .[ui]", file=sys.stderr)
+        return 2
+    app = create_app(AppPaths(args.dataset, args.prompts_dir, args.db, args.out, Path("frontend/dist")))
+    uvicorn.run(app, host="127.0.0.1", port=args.port)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")  # Windows consoles default to cp1252; summaries contain emoji
     args = parse_args(argv)
     try:
-        return export_command(args) if args.command == "export" else run_command(args)
+        return {"export": export_command, "serve": serve_command}.get(args.command, run_command)(args)
     except (ValueError, ValidationError, FileNotFoundError) as exc:
         print(f"error: {exc}", file=sys.stderr)
     except openai.OpenAIError as exc:  # includes APIError and missing credentials
