@@ -14,7 +14,7 @@ A customer-support email classifier: email text in → JSON `{category, summary}
 
 ## Stack
 
-Python 3.11+ · OpenAI API (`gpt-4o`, `gpt-4o-mini`) · DeepEval · PyYAML · pytest · SQLite + JSON · Slack incoming webhooks · GitHub Actions · static HTML report · Docker.
+Python 3.11+ · OpenAI API (`gpt-4o`, `gpt-4o-mini`) · DeepEval · PyYAML · pytest · SQLite + JSON · Slack incoming webhooks · GitHub Actions · static HTML report · Docker · FastAPI + uvicorn (owner API) · React + Vite + TypeScript (dashboard; frontend deps limited to the list in the frontend plan).
 
 Don't add dependencies beyond this list without asking.
 
@@ -34,8 +34,13 @@ src/regress/
   report.py              # HTML report + PR markdown summary
   slack.py               # Slack webhook
   cli.py                 # `python -m regress run`, exit codes 0/1/2
+  snapshot.py            # dashboard snapshot export (JSON)
+  edits.py               # golden/prompt edit rules for the owner API
+  api.py                 # FastAPI owner API (`python -m regress serve`)
+frontend/                # React + Vite + TypeScript dashboard
 tests/                   # fakes.py holds the fake OpenAI client; fixtures/ is synthetic, not golden
 .github/workflows/eval.yml
+.github/workflows/site.yml   # builds + deploys the public demo to GitHub Pages
 Dockerfile
 ```
 
@@ -61,7 +66,7 @@ Dockerfile
 - `OPENAI_API_KEY`, `SLACK_WEBHOOK_URL`, and the thresholds come from env vars only. Never commit them. Keep `.env` gitignored and ship a `.env.example`.
 
 **CI**
-- The workflow triggers on PRs that touch `prompts/`, posts a PR summary comment, and fails the check on critical regressions.
+- The workflow triggers on PRs that touch `prompts/` or `data/golden.json`, posts a PR summary comment, and fails the check on critical regressions.
 
 ## Testing
 
@@ -74,6 +79,8 @@ Dockerfile
 - Install: `python -m venv .venv && .venv/Scripts/activate && pip install -e ".[dev]"`
 - Run eval: `python -m regress run` (exit 0 pass/warn, 1 critical, 2 error)
 - Tests: `pytest`
+- Owner dashboard: `python -m regress serve` (needs `.[ui]`; build `frontend/` first)
+- Frontend dev: `cd frontend && npm run dev`
 - Docker: `docker build -t regress . && docker run --rm --env-file .env -v "$PWD/state:/state" regress`
 
 ## Environment

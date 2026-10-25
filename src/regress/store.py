@@ -18,6 +18,9 @@ CREATE TABLE IF NOT EXISTS case_results (
     run_id TEXT NOT NULL REFERENCES runs(run_id), {", ".join(CASE_FIELDS)},
     PRIMARY KEY (run_id, case_id)
 );
+CREATE TABLE IF NOT EXISTS pr_runs (
+    run_id TEXT PRIMARY KEY REFERENCES runs(run_id), pr_number INTEGER NOT NULL, head_sha TEXT NOT NULL
+);
 """
 
 
@@ -27,23 +30,41 @@ def connect(path: Path) -> sqlite3.Connection:
     return conn
 
 
+def _insert_run(conn: sqlite3.Connection, run: RunResult) -> None:
+    conn.execute(
+        "INSERT INTO runs VALUES (?, ?, ?, ?, ?)",
+        (run.run_id, run.created_at.isoformat(), run.prompt_version, run.model, run.dataset_version),
+    )
+    conn.executemany(
+        f"INSERT INTO case_results VALUES (?, {', '.join('?' * len(CASE_FIELDS))})",
+        [(run.run_id, *astuple(c)) for c in run.cases],
+    )
+
+
 def save_run(conn: sqlite3.Connection, run: RunResult) -> None:
     with conn:
-        conn.execute(
-            "INSERT INTO runs VALUES (?, ?, ?, ?, ?)",
-            (run.run_id, run.created_at.isoformat(), run.prompt_version, run.model, run.dataset_version),
-        )
-        conn.executemany(
-            f"INSERT INTO case_results VALUES (?, {', '.join('?' * len(CASE_FIELDS))})",
-            [(run.run_id, *astuple(c)) for c in run.cases],
-        )
+        _insert_run(conn, run)
 
 
-def _load(conn: sqlite3.Connection, row) -> RunResult:
+def save_pr_run(conn: sqlite3.Connection, run: RunResult, pr_number: int, head_sha: str) -> None:
+    with conn:
+        _insert_run(conn, run)
+        conn.execute("INSERT INTO pr_runs VALUES (?, ?, ?)", (run.run_id, pr_number, head_sha))
+
+
+def read_db(path: Path | None, read):
+    """Run `read(conn)` on an existing db; a missing db means no runs and is not created."""
+    if path is None or not path.exists():
+        return []
+    conn = connect(path)
+    try:
+        return read(conn)
+    finally:
+        conn.close()
+
+
+def _build(row, rows) -> RunResult:
     run_id, created_at, prompt_version, model, dataset_version = row
-    rows = conn.execute(
-        f"SELECT {', '.join(CASE_FIELDS)} FROM case_results WHERE run_id = ? ORDER BY rowid", (run_id,)
-    ).fetchall()
     cases = []
     for r in rows:
         c = CaseResult(*r)
@@ -53,6 +74,21 @@ def _load(conn: sqlite3.Connection, row) -> RunResult:
                      cases=cases, run_id=run_id, created_at=datetime.fromisoformat(created_at))
 
 
+def _load_many(conn: sqlite3.Connection, run_rows) -> list[RunResult]:
+    """Build runs (in the given order) from their rows, loading only those runs' case_results."""
+    run_rows = list(run_rows)
+    ids = [row[0] for row in run_rows]
+    by_run: dict[str, list] = {}
+    for i in range(0, len(ids), 900):  # SQLite caps bound variables
+        chunk = ids[i:i + 900]
+        for r in conn.execute(
+            f"SELECT run_id, {', '.join(CASE_FIELDS)} FROM case_results "
+            f"WHERE run_id IN ({', '.join('?' * len(chunk))}) ORDER BY run_id, rowid", chunk,
+        ):
+            by_run.setdefault(r[0], []).append(r[1:])
+    return [_build(row[:5], by_run.get(row[0], [])) for row in run_rows]
+
+
 def recent_runs(conn: sqlite3.Connection, dataset_version: str, limit: int) -> list[RunResult]:
     """Last `limit` runs for this dataset version, oldest first."""
     rows = conn.execute(
@@ -60,9 +96,34 @@ def recent_runs(conn: sqlite3.Connection, dataset_version: str, limit: int) -> l
         "WHERE dataset_version = ? ORDER BY created_at DESC, rowid DESC LIMIT ?",
         (dataset_version, limit),
     ).fetchall()
-    return [_load(conn, r) for r in reversed(rows)]
+    return _load_many(conn, reversed(rows))
 
 
 def latest_run(conn: sqlite3.Connection, dataset_version: str) -> RunResult | None:
     runs = recent_runs(conn, dataset_version, 1)
     return runs[0] if runs else None
+
+
+def all_runs(conn: sqlite3.Connection) -> list[RunResult]:
+    """Every run across dataset versions, oldest first."""
+    rows = conn.execute(
+        "SELECT run_id, created_at, prompt_version, model, dataset_version FROM runs ORDER BY created_at, rowid"
+    ).fetchall()
+    return _load_many(conn, rows)
+
+
+def list_pr_runs(conn: sqlite3.Connection) -> list[tuple[RunResult, int, str]]:
+    """PR runs with their PR number and head sha, oldest first."""
+    rows = conn.execute(
+        "SELECT r.run_id, r.created_at, r.prompt_version, r.model, r.dataset_version, p.pr_number, p.head_sha "
+        "FROM runs r JOIN pr_runs p ON p.run_id = r.run_id ORDER BY r.created_at, r.rowid"
+    ).fetchall()
+    return [(run, r[5], r[6]) for run, r in zip(_load_many(conn, rows), rows)]
+
+
+def used_dataset_versions(conn: sqlite3.Connection) -> set[str]:
+    return {r[0] for r in conn.execute("SELECT DISTINCT dataset_version FROM runs")}
+
+
+def used_case_ids(conn: sqlite3.Connection) -> set[str]:
+    return {r[0] for r in conn.execute("SELECT DISTINCT case_id FROM case_results")}

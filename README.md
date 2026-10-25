@@ -90,9 +90,27 @@ All thresholds come from env vars. In CI, set them as repository variables; unse
 
 ## CI
 
-`.github/workflows/eval.yml` runs on PRs and pushes to `main` that touch `prompts/`, and can also be started by hand. Add the repository secrets `OPENAI_API_KEY` and `SLACK_WEBHOOK_URL`. The workflow posts or updates one PR comment with the summary, uploads the HTML report as the `eval-report` artifact, and fails the check on exit codes 1 and 2.
+`.github/workflows/eval.yml` runs on PRs and pushes to `main` that touch `prompts/` or `data/golden.json`, and can also be started by hand. Add the repository secrets `OPENAI_API_KEY` and `SLACK_WEBHOOK_URL`. The workflow posts or updates one PR comment with the summary, uploads the HTML report as the `eval-report` artifact, and fails the check on exit codes 1 and 2.
 
-Run history (`runs.db`) is kept in the Actions cache. PR runs start from main's latest history. If the cache goes unused for 7 days, GitHub evicts it and the next run becomes a fresh baseline.
+History lives on the `eval-history` branch. `runs.db` gets only `main` runs and is the only baseline. `pr-runs/` holds one DB per PR run (`<pr_number>-<short sha>.db`), which the dashboard shows but which are never a baseline. `site.yml` rebuilds the public demo after each eval and on frontend changes.
+
+## Dashboard
+
+A React dashboard shows run history, trends, drift, PR runs and per-case results.
+
+- **Public demo:** https://mandpeganesh.github.io/Model-Regression-Detection-System/ (read-only, rebuilt from CI history after every eval run).
+- **Owner mode** (local; can edit cases and prompts and start runs):
+
+```bash
+pip install -e ".[ui]"
+set -a; . ./.env; set +a        # load OPENAI_API_KEY etc., as for `run`
+cd frontend && npm ci && npm run build && cd ..
+python -m regress serve         # from the repo root; then open http://127.0.0.1:8000
+```
+
+For frontend work, run `python -m regress serve` and, in another terminal, `cd frontend && npm run dev` (Vite proxies `/api` to the server).
+
+One-time setup for the public site: repo Settings → Pages → Source: GitHub Actions. `.github/workflows/site.yml` then deploys it.
 
 ## How it works
 

@@ -58,7 +58,8 @@ class RunResult:
         return sum(c.latency_ms for c in self.cases) / len(self.cases)
 
 
-async def run_eval(config: PromptConfig, dataset: GoldenDataset, *, client, judge: Judge, settings: Settings) -> RunResult:
+async def run_eval(config: PromptConfig, dataset: GoldenDataset, *, client, judge: Judge, settings: Settings,
+                   on_case_done: Callable[[], None] | None = None) -> RunResult:
     """API errors (after the client's own retries) propagate and abort the whole run."""
     semaphore = asyncio.Semaphore(settings.max_concurrency)
 
@@ -68,7 +69,7 @@ async def run_eval(config: PromptConfig, dataset: GoldenDataset, *, client, judg
             result = response.result
             relevance = await judge(case.input, case.expected.summary, result.summary) if result else 1
         correct = result is not None and result.category == case.expected.category
-        return CaseResult(
+        scored = CaseResult(
             case_id=case.id,
             expected_category=case.expected.category,
             actual_category=result.category if result else None,
@@ -81,6 +82,9 @@ async def run_eval(config: PromptConfig, dataset: GoldenDataset, *, client, judg
             passed=correct and relevance >= settings.relevance_pass_min,
             error=response.error,
         )
+        if on_case_done:
+            on_case_done()
+        return scored
 
     cases = await asyncio.gather(*(score(c) for c in dataset.cases))
     return RunResult(prompt_version=config.version, model=config.model, dataset_version=dataset.version, cases=list(cases))

@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from regress.config import ClassificationResult, Settings, latest_prompt, load_prompt
+from regress.snapshot import load_prompts
 
 
 def write_prompt(path: Path, version: str, created_at: str, extra: str = "") -> Path:
@@ -35,6 +36,13 @@ def test_latest_prompt_picks_newest_created_at(tmp_path):
     write_prompt(tmp_path / "v1.yaml", "v1", "2026-01-01T00:00:00Z")
     v2 = write_prompt(tmp_path / "v2.yaml", "v2", "2026-02-01T00:00:00Z")
     assert latest_prompt(tmp_path) == v2
+
+
+def test_naive_and_aware_created_at_sort_together(tmp_path):
+    write_prompt(tmp_path / "v1.yaml", "v1", "2026-01-01T00:00:00")  # naive: read as UTC
+    v2 = write_prompt(tmp_path / "v2.yaml", "v2", "2026-02-01T00:00:00Z")
+    assert latest_prompt(tmp_path) == v2
+    assert [p.version for p in load_prompts(tmp_path)] == ["v2", "v1"]
 
 
 def test_latest_prompt_tie_raises(tmp_path):

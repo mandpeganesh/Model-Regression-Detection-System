@@ -1,13 +1,14 @@
 import json
+from datetime import datetime, timezone
 
 import openai
 import pytest
 
-from fakes import FakeClient, parsed
+from fakes import FakeClient, make_run, parsed
 from regress import cli, slack
 from regress.config import Settings
 from regress.dataset import load_dataset
-from regress.store import connect, latest_run
+from regress.store import connect, latest_run, list_pr_runs, save_pr_run
 
 DS_PATH = "tests/fixtures/mini_dataset.json"
 EXPECTED = {c.input: c.expected.category for c in load_dataset(DS_PATH).cases}
@@ -113,3 +114,57 @@ def test_missing_api_key_exits_2(tmp_path, monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setattr(cli, "make_client", lambda: cli.AsyncOpenAI(max_retries=6))
     assert run(tmp_path) == 2
+
+
+def run_pr(tmp_path):
+    return cli.main(["run", "--prompt", "prompts/v1.yaml", "--dataset", DS_PATH,
+                     "--db", str(tmp_path / "runs.db"), "--out", str(tmp_path / "reports"),
+                     "--record-to", str(tmp_path / "pr.db"), "--pr-number", "7", "--head-sha", "s"])
+
+
+def test_record_to_saves_pr_run_and_leaves_baseline_db(tmp_path, monkeypatch):
+    use_client(monkeypatch)
+    assert run(tmp_path) == 0
+    use_client(monkeypatch, wrong=1)
+    assert run_pr(tmp_path) == 1  # 1 of 4 wrong is a 25-point drop: critical
+    assert len(connect(tmp_path / "runs.db").execute("SELECT 1 FROM runs").fetchall()) == 1
+    [(pr_run, number, sha)] = list_pr_runs(connect(tmp_path / "pr.db"))
+    assert (number, sha, pr_run.pass_rate) == (7, "s", 0.75)
+
+
+def test_record_to_critical_exits_1(tmp_path, monkeypatch):
+    use_client(monkeypatch)
+    assert run(tmp_path) == 0
+    use_client(monkeypatch, wrong=2)
+    assert run_pr(tmp_path) == 1
+
+
+def test_pr_args_must_come_together(tmp_path):
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["run", "--pr-number", "7"])
+    assert exc.value.code == 2
+
+
+def test_export_writes_utf8_json(tmp_path):
+    ds = json.loads(open(DS_PATH, encoding="utf-8").read())
+    ds["cases"][0]["input"] = "¿ayuda? 日本語"
+    ds_path = tmp_path / "golden.json"
+    ds_path.write_text(json.dumps(ds, ensure_ascii=False), encoding="utf-8")
+    db, out = tmp_path / "missing.db", tmp_path / "out" / "snapshot.json"
+    code = cli.main(["export", "--db", str(db), "--dataset", str(ds_path), "--prompts-dir", "prompts",
+                     "--out", str(out)])
+    text = out.read_text(encoding="utf-8")
+    assert code == 0 and "¿ayuda? 日本語" in text
+    assert json.loads(text)["runs"] == [] and not db.exists()
+
+
+def test_export_merges_pr_dbs_oldest_first(tmp_path):
+    for name, day, number in (("p2", 2, 8), ("p1", 1, 7)):
+        conn = connect(tmp_path / f"{name}.db")
+        save_pr_run(conn, make_run(name, created_at=datetime(2026, 1, day, tzinfo=timezone.utc)), number, "s")
+        conn.close()
+    out = tmp_path / "snapshot.json"
+    code = cli.main(["export", "--db", str(tmp_path / "runs.db"), "--pr-db", str(tmp_path / "p2.db"),
+                     str(tmp_path / "p1.db"), "--dataset", DS_PATH, "--prompts-dir", "prompts", "--out", str(out)])
+    pr_runs = json.loads(out.read_text(encoding="utf-8"))["pr_runs"]
+    assert code == 0 and [(r["run_id"], r["pr_number"]) for r in pr_runs] == [("p1", 7), ("p2", 8)]
