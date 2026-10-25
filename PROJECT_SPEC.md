@@ -58,7 +58,7 @@ Most AI teams ship prompt changes blind, with no systematic check that a "small 
 ## Status tracking
 
 - [x] Phase 1
-- [ ] Phase 2 (schema + validation done; cases to be hand-written in data/golden.json)
+- [x] Phase 2
 - [x] Phase 3
 - [x] Phase 4
 - [x] Phase 5
