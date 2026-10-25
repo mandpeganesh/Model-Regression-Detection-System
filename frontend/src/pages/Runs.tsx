@@ -1,9 +1,8 @@
 import type { PageProps } from "../types";
+import { pct, points } from "../format";
 import { navigate } from "../router";
 import StatusTag from "../components/StatusTag";
 
-const pct = (v: number) => `${Math.round(v * 100)}%`;
-const points = (d: number | null) => (d === null ? "—" : `${d >= 0 ? "+" : ""}${(d * 100).toFixed(1)} pts`);
 
 export default function Runs({ snapshot, datasetVersion }: PageProps) {
   const runs = snapshot.runs.filter((r) => r.dataset_version === datasetVersion).reverse();

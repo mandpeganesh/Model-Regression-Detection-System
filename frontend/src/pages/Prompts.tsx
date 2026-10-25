@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api, DEMO } from "../data";
+import { pct } from "../format";
 import type { PageProps, Prompt } from "../types";
 
 type Op = { t: " " | "+" | "-"; s: string };
@@ -71,16 +72,16 @@ function Editor({ base, prompts, onDone, onCancel }: { base: Prompt; prompts: Pr
       <label>System prompt <textarea rows={8} value={d.system_prompt} onChange={(e) => setD({ ...d, system_prompt: e.target.value })} /></label>
       {d.shots.map((s, i) => (
         <fieldset key={i}>
-          <legend>Few-shot {i + 1} <button onClick={() => setD({ ...d, shots: d.shots.filter((_, x) => x !== i) })}>remove</button></legend>
+          <legend>Few-shot {i + 1} <button className="btn ghost" onClick={() => setD({ ...d, shots: d.shots.filter((_, x) => x !== i) })}>remove</button></legend>
           <textarea rows={3} placeholder="email" value={s.email} onChange={(e) => setShot(i, "email", e.target.value)} />
           <input placeholder="category" value={s.category} onChange={(e) => setShot(i, "category", e.target.value)} />
           <input placeholder="summary" value={s.summary} onChange={(e) => setShot(i, "summary", e.target.value)} />
         </fieldset>
       ))}
       <div className="row">
-        <button onClick={() => setD({ ...d, shots: [...d.shots, { email: "", category: "", summary: "" }] })}>+ few-shot</button>
+        <button className="btn ghost" onClick={() => setD({ ...d, shots: [...d.shots, { email: "", category: "", summary: "" }] })}>+ few-shot</button>
         <span className="sp" />
-        <button onClick={onCancel}>Cancel</button>
+        <button className="btn ghost" onClick={onCancel}>Cancel</button>
         <button className="btn" onClick={submit}>Create {d.version}</button>
       </div>
       {error && <p className="error">{error}</p>}
@@ -94,10 +95,9 @@ export default function Prompts({ snapshot, reload }: PageProps) {
   const [editing, setEditing] = useState(false);
   const find = (v: string) => prompts.find((p) => p.version === v);
   const [from, to] = [find(sel[0]), find(sel[1])];
-  const rate = (v: string) => {
-    const r = snapshot.runs.find((x) => x.prompt_version === v); // runs are newest first
-    return r ? `${Math.round(r.pass_rate * 100)}%` : "—";
-  };
+  const latestRate = new Map<string, number>(); // snapshot.runs is oldest first, so later runs overwrite
+  for (const r of snapshot.runs) latestRate.set(r.prompt_version, r.pass_rate);
+  const rate = (v: string) => (latestRate.has(v) ? pct(latestRate.get(v)!) : "—");
   const newest = prompts[0];
 
   return (

@@ -10,7 +10,7 @@ from pathlib import Path
 
 import yaml
 
-from regress.config import PromptConfig, load_prompt
+from regress.config import PromptConfig, find_prompt
 from regress.dataset import GoldenCase, GoldenDataset
 
 _VERSION_RE = re.compile(r"[A-Za-z0-9._-]+")
@@ -66,7 +66,7 @@ def create_prompt(
     if not _VERSION_RE.fullmatch(version) or version in (".", ".."):
         raise ValueError(f"invalid prompt version {version!r}: use letters, digits, '.', '_' or '-'")
     prompts_dir = Path(prompts_dir)
-    if any(load_prompt(p).version == version for p in prompts_dir.glob("*.yaml")):
+    if find_prompt(prompts_dir, version):
         raise ValueError(f"prompt version {version!r} already exists; prompts are immutable")
     path = prompts_dir / f"{version}.yaml"
     if path.exists():

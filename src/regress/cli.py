@@ -23,7 +23,7 @@ from regress.judge import judge_summary
 from regress.report import TREND_RUNS, render_html, render_markdown, write_text
 from regress.runner import run_eval
 from regress.snapshot import build_snapshot, load_prompts
-from regress.store import (all_runs, connect, latest_run, list_pr_runs, recent_runs, save_pr_run,
+from regress.store import (all_runs, connect, latest_run, list_pr_runs, read_db, recent_runs, save_pr_run,
                            save_run)
 
 
@@ -57,7 +57,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     serve.add_argument("--db", type=Path, default=Path("runs.db"))
     serve.add_argument("--out", type=Path, default=Path("reports"))
     args = parser.parse_args(argv)
-    if args.command == "run" and len({args.record_to is None, args.pr_number is None, args.head_sha is None}) != 1:
+    if args.command == "run" and [args.record_to, args.pr_number, args.head_sha].count(None) not in (0, 3):
         parser.error("--record-to, --pr-number and --head-sha must be given together")
     return args
 
@@ -111,24 +111,13 @@ def run_command(args: argparse.Namespace) -> int:
     settings = Settings.from_env()
     outcome = execute_run(args.prompt or latest_prompt(args.prompts_dir), args.dataset, args.db, args.out, settings,
                           record_to=args.record_to, pr_number=args.pr_number, head_sha=args.head_sha)
-    print((args.out / "summary.md").read_text(encoding="utf-8"))
+    print(render_markdown(outcome, settings.report_url))
     print(f"Report: {args.out / (outcome.run.run_id + '.html')}")
     return 1 if outcome.comparison.status is Status.CRITICAL else 0
 
 
-def _read_db(path: Path | None, read):
-    """Run `read(conn)` on an existing db; a missing db means no runs and is not created."""
-    if path is None or not path.exists():
-        return []
-    conn = connect(path)
-    try:
-        return read(conn)
-    finally:
-        conn.close()
-
-
 def export_command(args: argparse.Namespace) -> int:
-    snapshot = build_snapshot(_read_db(args.db, all_runs), _read_db(args.pr_db, list_pr_runs),
+    snapshot = build_snapshot(read_db(args.db, all_runs), read_db(args.pr_db, list_pr_runs),
                               load_dataset(args.dataset), load_prompts(args.prompts_dir), Settings.from_env())
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")

@@ -30,7 +30,7 @@ jobs:
       # history/ stays empty and the site shows "No runs yet".
       - name: Attach eval-history
         run: |
-          if git fetch origin eval-history; then
+          if git fetch --depth=1 origin eval-history; then
             git worktree add history FETCH_HEAD
           else
             mkdir history

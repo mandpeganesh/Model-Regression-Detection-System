@@ -1,3 +1,4 @@
+import { pct } from "../format";
 import type { RunView } from "../types";
 
 const W = 600, H = 160, PAD = 28;
@@ -17,13 +18,13 @@ export default function TrendChart({ runs, floor }: { runs: RunView[]; floor: nu
       {pts.map((r, i) => (
         <g key={r.run_id}>
           <circle cx={x(i)} cy={y(r.pass_rate)} r={3} fill="#2563eb">
-            <title>{`${r.run_id} · ${Math.round(r.pass_rate * 100)}%`}</title>
+            <title>{`${r.run_id} · ${pct(r.pass_rate)}`}</title>
           </circle>
           <text x={x(i)} y={y(r.pass_rate) - 8} fontSize={9} textAnchor="middle" fill="#374151">{r.prompt_version}</text>
         </g>
       ))}
       <text x={4} y={H - 6} fontSize={9} fill="#6b7280">
-        pass rate over runs · dashed = drift floor {Math.round(floor * 100)}%
+        pass rate over runs · dashed = drift floor {pct(floor)}
       </text>
     </svg>
   );

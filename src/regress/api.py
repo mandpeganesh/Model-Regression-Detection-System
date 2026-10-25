@@ -13,14 +13,14 @@ import openai
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
 from regress import cli
-from regress.config import Settings, load_prompt
+from regress.config import Settings, find_prompt
 from regress.dataset import GoldenCase, load_dataset
 from regress.edits import add_case, create_prompt, edit_case, save_dataset
 from regress.snapshot import build_snapshot, load_prompts
-from regress.store import all_runs, used_case_ids, used_dataset_versions
+from regress.store import all_runs, read_db, used_case_ids, used_dataset_versions
 
 
 @dataclass
@@ -74,7 +74,7 @@ def create_app(paths: AppPaths) -> FastAPI:
 
     @app.get("/api/snapshot")
     def snapshot():
-        return build_snapshot(cli._read_db(paths.db, all_runs), [], load_dataset(paths.dataset),
+        return build_snapshot(read_db(paths.db, all_runs), [], load_dataset(paths.dataset),
                               load_prompts(paths.prompts_dir), Settings.from_env())
 
     @app.get("/api/runs/current")
@@ -91,8 +91,6 @@ def create_app(paths: AppPaths) -> FastAPI:
             outcome = cli.execute_run(prompt_path, paths.dataset, paths.db, paths.out, Settings.from_env(),
                                       on_case_done=on_case_done)
             result = {"state": "done", "run_id": outcome.run.run_id}
-        except (ValueError, ValidationError, FileNotFoundError) as exc:
-            result = {"state": "error", "error": str(exc)}
         except openai.OpenAIError as exc:
             result = {"state": "error", "error": f"OpenAI call failed; nothing was stored: {exc}"}
         except Exception as exc:  # the thread must always leave "running"
@@ -102,22 +100,22 @@ def create_app(paths: AppPaths) -> FastAPI:
 
     @app.post("/api/runs", status_code=202, dependencies=[Depends(_local_origin)])
     def start_run(body: RunBody):
-        matches = [p for p in paths.prompts_dir.glob("*.yaml") if load_prompt(p).version == body.prompt_version]
-        if not matches:
+        prompt_path = find_prompt(paths.prompts_dir, body.prompt_version)
+        if prompt_path is None:
             raise HTTPException(404, f"unknown prompt version {body.prompt_version!r}")
         with lock:
             check_idle()
             total = len(load_dataset(paths.dataset).cases)
             state.update(state="running", done=0, total=total, run_id=None, error=None)
-            app.state.run_thread = threading.Thread(target=do_run, args=(matches[0],), daemon=True)
+            app.state.run_thread = threading.Thread(target=do_run, args=(prompt_path,), daemon=True)
             app.state.run_thread.start()
         return {"run_id": None}
 
     def write_dataset(make) -> dict:
         with lock:  # also stops a run from starting mid-write
             check_idle()
-            ds = make(load_dataset(paths.dataset), set(cli._read_db(paths.db, used_dataset_versions)),
-                      set(cli._read_db(paths.db, used_case_ids)))
+            ds = make(load_dataset(paths.dataset), set(read_db(paths.db, used_dataset_versions)),
+                      set(read_db(paths.db, used_case_ids)))
             save_dataset(paths.dataset, ds)
             return {"version": ds.version}
 

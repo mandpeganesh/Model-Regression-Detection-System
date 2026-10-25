@@ -39,3 +39,8 @@ export const api = {
   createPrompt: (p: { version: string; model: string; system_prompt: string; few_shot_examples: unknown[] }) =>
     call<{ path: string }>("POST", "/api/prompts", p),
 };
+
+export function prUrl(n: number): string | null {
+  const repo = import.meta.env.VITE_REPO;
+  return repo ? `https://github.com/${repo}/pull/${n}` : null;
+}

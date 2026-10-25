@@ -40,7 +40,7 @@ export default function RunEvalDialog({ snapshot, onClose, reload }: { snapshot:
       }
     }, 1000);
     return () => clearInterval(t);
-  }, [started]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [started]);
 
   const running = started && !error;
   return (
@@ -61,7 +61,7 @@ export default function RunEvalDialog({ snapshot, onClose, reload }: { snapshot:
         )}
         {error && <p className="error">{error}</p>}
         <div className="row">
-          <button onClick={onClose}>{running ? "Hide" : "Cancel"}</button>
+          <button className="btn ghost" onClick={onClose}>{running ? "Hide" : "Cancel"}</button>
           {!started && <button className="btn" disabled={!version} onClick={start}>Start run</button>}
         </div>
       </div>

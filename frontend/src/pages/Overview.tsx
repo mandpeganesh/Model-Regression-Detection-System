@@ -1,11 +1,11 @@
 import type { PageProps } from "../types";
 import { navigate } from "../router";
+import { prUrl } from "../data";
+import { pct, points } from "../format";
 import StatusTag from "../components/StatusTag";
 import Tiles from "../components/Tiles";
 import TrendChart from "../components/TrendChart";
 
-const pct = (v: number) => `${Math.round(v * 100)}%`;
-const points = (d: number | null) => (d === null ? "—" : `${d >= 0 ? "+" : ""}${(d * 100).toFixed(1)} pts`);
 
 export default function Overview({ snapshot, datasetVersion }: PageProps) {
   const runs = snapshot.runs.filter((r) => r.dataset_version === datasetVersion);
@@ -61,8 +61,8 @@ export default function Overview({ snapshot, datasetVersion }: PageProps) {
                   <td>{points(r.comparison.pass_rate_delta)}</td>
                   <td>
                     <StatusTag status={r.comparison.status} /> {r.comparison.status === "critical" ? "blocked" : "passed"}
-                    {import.meta.env.VITE_REPO && (
-                      <> · <a href={`https://github.com/${import.meta.env.VITE_REPO}/pull/${r.pr_number}`} onClick={(e) => e.stopPropagation()}>GitHub</a></>
+                    {prUrl(r.pr_number) && (
+                      <> · <a href={prUrl(r.pr_number)!} onClick={(e) => e.stopPropagation()}>GitHub</a></>
                     )}
                   </td>
                 </tr>

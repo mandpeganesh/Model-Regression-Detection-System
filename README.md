@@ -92,7 +92,7 @@ All thresholds come from env vars. In CI, set them as repository variables; unse
 
 `.github/workflows/eval.yml` runs on PRs and pushes to `main` that touch `prompts/` or `data/golden.json`, and can also be started by hand. Add the repository secrets `OPENAI_API_KEY` and `SLACK_WEBHOOK_URL`. The workflow posts or updates one PR comment with the summary, uploads the HTML report as the `eval-report` artifact, and fails the check on exit codes 1 and 2.
 
-Run history (`runs.db`) is kept in the Actions cache. PR runs start from main's latest history. If the cache goes unused for 7 days, GitHub evicts it and the next run becomes a fresh baseline.
+History lives on the `eval-history` branch. `runs.db` gets only `main` runs and is the only baseline. `pr-runs.db` holds PR runs, which the dashboard shows but which are never a baseline. `site.yml` rebuilds the public demo after each eval and on frontend changes.
 
 ## Dashboard
 
@@ -111,8 +111,6 @@ python -m regress serve         # then open http://127.0.0.1:8000
 For frontend work, run `python -m regress serve` and, in another terminal, `cd frontend && npm run dev` (Vite proxies `/api` to the server).
 
 One-time setup for the public site: repo Settings → Pages → Source: GitHub Actions. `.github/workflows/site.yml` then deploys it.
-
-CI history lives on the `eval-history` branch: `runs.db` is the baseline (runs from `main`), `pr-runs.db` holds PR runs and is never a baseline.
 
 ## How it works
 

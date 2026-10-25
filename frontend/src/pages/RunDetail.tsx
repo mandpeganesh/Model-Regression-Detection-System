@@ -1,10 +1,10 @@
 import { Fragment, useState } from "react";
+import { prUrl } from "../data";
+import { pct, points } from "../format";
 import type { CaseResult, PageProps } from "../types";
 import StatusTag from "../components/StatusTag";
 import Tiles from "../components/Tiles";
 
-const pct = (v: number) => `${Math.round(v * 100)}%`;
-const points = (d: number | null) => (d === null ? "—" : `${d >= 0 ? "+" : ""}${(d * 100).toFixed(1)} pts`);
 const cell = (c?: CaseResult) =>
   c ? `${c.actual_category ?? "error"} · ${c.relevance}/5 ${c.passed ? "✓" : "✗"}` : "—";
 type Filter = "Regressions" | "Improvements" | "All failing" | "All";
@@ -29,14 +29,14 @@ export default function RunDetail({ snapshot, runId, isPr }: PageProps & { runId
     : active === "All failing" ? !x.passed
     : true;
   const pr = "pr_number" in run ? run.pr_number : null;
-  const repo = import.meta.env.VITE_REPO;
+  const url = typeof pr === "number" ? prUrl(pr) : null;
 
   return (
     <>
       <h2>{run.run_id} <StatusTag status={c.status} /></h2>
       <p className="muted">
         {isPr && pr !== null && (
-          <>PR #{pr} · not merged into history{repo && <> (<a href={`https://github.com/${repo}/pull/${pr}`}>view on GitHub</a>)</>} · </>
+          <>PR #{pr} · not merged into history{url && <> (<a href={url}>view on GitHub</a>)</>} · </>
         )}
         prompt {run.prompt_version} · {run.model} · dataset {run.dataset_version} · {run.created_at} ·{" "}
         {base ? `baseline ${base.run_id} (prompt ${base.prompt_version})` : c.baseline_run_id ? `baseline ${c.baseline_run_id}` : "first run for this dataset version"}

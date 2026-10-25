@@ -44,7 +44,7 @@ jobs:
       - name: Attach eval-history
         run: |
           if git ls-remote --exit-code --heads origin eval-history; then
-            git fetch origin eval-history && git worktree add history FETCH_HEAD
+            git fetch --depth=1 origin eval-history && git worktree add history FETCH_HEAD
           else
             git worktree add --orphan -b eval-history history
           fi

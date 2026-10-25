@@ -48,6 +48,11 @@ def latest_prompt(prompts_dir: Path) -> Path:
     return dated[-1][1]
 
 
+def find_prompt(prompts_dir: Path, version: str) -> Path | None:
+    """The prompt file whose `version` matches, if any."""
+    return next((p for p in Path(prompts_dir).glob("*.yaml") if load_prompt(p).version == version), None)
+
+
 @dataclass(frozen=True)
 class Settings:
     warn_threshold: float = 0.03
