@@ -32,3 +32,16 @@ tr.link:hover { background: #f9fafb; }
   .tiles { grid-template-columns: repeat(2, 1fr); }
   .side { width: 110px; }
 }
+.row { display: flex; align-items: center; gap: 8px; }
+.row .sp { flex: 1; }
+.diff { border: 1px solid #e5e7eb; border-radius: 6px; padding: 8px; overflow-x: auto; font-size: 12px; margin: 0; }
+.diff .d\+ { background: #dcfce7; }
+.diff .d- { background: #fee2e2; }
+.editor { border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.editor label, .dialog label { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: #6b7280; }
+.editor textarea, .editor input, .dialog input, .dialog select { font: inherit; padding: 4px; }
+.editor fieldset { display: flex; flex-direction: column; gap: 4px; }
+.overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, .4); display: flex; align-items: center; justify-content: center; }
+.dialog { background: #fff; border-radius: 8px; padding: 16px; width: 360px; display: flex; flex-direction: column; gap: 10px; }
+.dialog .row { justify-content: flex-end; }
+.dialog progress { width: 100%; }
