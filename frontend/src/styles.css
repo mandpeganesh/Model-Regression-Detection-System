@@ -32,3 +32,11 @@ tr.link:hover { background: #f9fafb; }
   .tiles { grid-template-columns: repeat(2, 1fr); }
   .side { width: 110px; }
 }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.row.top { align-items: flex-start; flex-wrap: nowrap; }
+.row .sp { flex: 1; }
+.panel { flex: 1; border: 1px solid #e5e7eb; border-radius: 6px; padding: 10px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.panel textarea { width: 100%; font: inherit; }
+.warnbox { background: #fffbeb; border: 1px solid #fde68a; border-radius: 4px; padding: 6px; }
+.btn.ghost { background: #fff; color: #374151; border: 1px solid #d1d5db; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
