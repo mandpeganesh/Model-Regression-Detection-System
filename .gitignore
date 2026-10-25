@@ -8,3 +8,6 @@ __pycache__/
 .pytest_cache/
 .deepeval/
 .superpowers/
+frontend/node_modules/
+frontend/dist/
+frontend/public/data/
