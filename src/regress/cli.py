@@ -134,7 +134,11 @@ def serve_command(args: argparse.Namespace) -> int:
     except ImportError:
         print("error: install with pip install -e .[ui]", file=sys.stderr)
         return 2
-    app = create_app(AppPaths(args.dataset, args.prompts_dir, args.db, args.out, Path("frontend/dist")))
+    static_dir = Path("frontend/dist")
+    if not static_dir.exists():
+        print(f"warning: {static_dir} not found; run from the repo root after `npm run build` in frontend/ "
+              "(only /api is served)", file=sys.stderr)
+    app = create_app(AppPaths(args.dataset, args.prompts_dir, args.db, args.out, static_dir))
     uvicorn.run(app, host="127.0.0.1", port=args.port)
     return 0
 

@@ -105,7 +105,7 @@ A React dashboard shows run history, trends, drift, PR runs and per-case results
 pip install -e ".[ui]"
 set -a; . ./.env; set +a        # load OPENAI_API_KEY etc., as for `run`
 cd frontend && npm ci && npm run build && cd ..
-python -m regress serve         # then open http://127.0.0.1:8000
+python -m regress serve         # from the repo root; then open http://127.0.0.1:8000
 ```
 
 For frontend work, run `python -m regress serve` and, in another terminal, `cd frontend && npm run dev` (Vite proxies `/api` to the server).
